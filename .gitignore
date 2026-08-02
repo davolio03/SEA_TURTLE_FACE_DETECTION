@@ -8,10 +8,10 @@ __pycache__/
 # Local datasets and generated artifacts
 data/
 outputs/
+DECISIONS.md
 
 # Editors and operating systems
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
-
