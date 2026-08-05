@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from collections.abc import Mapping, Sequence
 
+import numpy as np
 import pandas as pd
 from sklearn.model_selection import GroupShuffleSplit
 
@@ -85,3 +87,162 @@ def save_split(assignments: pd.DataFrame, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     assignments.to_csv(destination, index=False)
 
+
+def _standardized_mean_difference(
+    train_values: np.ndarray,
+    validation_values: np.ndarray,
+) -> float:
+    pooled_variance = (train_values.var() + validation_values.var()) / 2
+    if pooled_variance == 0:
+        return 0.0 if train_values.mean() == validation_values.mean() else np.inf
+    return float(
+        (validation_values.mean() - train_values.mean())
+        / np.sqrt(pooled_variance)
+    )
+
+
+def _wasserstein_distance(
+    first_values: np.ndarray,
+    second_values: np.ndarray,
+) -> float:
+    """Compute the exact one-dimensional empirical Wasserstein distance."""
+    combined = np.sort(np.concatenate([first_values, second_values]))
+    if len(combined) < 2:
+        return 0.0
+    deltas = np.diff(combined)
+    first_cdf = np.searchsorted(
+        np.sort(first_values), combined[:-1], side="right"
+    ) / len(first_values)
+    second_cdf = np.searchsorted(
+        np.sort(second_values), combined[:-1], side="right"
+    ) / len(second_values)
+    return float(np.sum(np.abs(first_cdf - second_cdf) * deltas))
+
+
+def summarize_continuous_split_balance(
+    dataframe: pd.DataFrame,
+    columns: Sequence[str],
+    split_column: str = "split",
+) -> pd.DataFrame:
+    """Compare train and validation distributions with robust summaries."""
+    required = set(columns) | {split_column}
+    missing = required - set(dataframe.columns)
+    if missing:
+        raise ValueError(f"Missing balance columns: {sorted(missing)}")
+
+    labels = set(dataframe[split_column].dropna().unique())
+    if labels != {"train", "validation"}:
+        raise ValueError("split column must contain train and validation")
+
+    rows = []
+    for column in columns:
+        train = dataframe.loc[dataframe[split_column].eq("train"), column]
+        validation = dataframe.loc[
+            dataframe[split_column].eq("validation"), column
+        ]
+        train_values = train.dropna().to_numpy(dtype=float)
+        validation_values = validation.dropna().to_numpy(dtype=float)
+        if not len(train_values) or not len(validation_values):
+            raise ValueError(f"Column {column} has an empty split")
+        if not (
+            np.isfinite(train_values).all()
+            and np.isfinite(validation_values).all()
+        ):
+            raise ValueError(f"Column {column} contains non-finite values")
+
+        pooled = np.concatenate([train_values, validation_values])
+        pooled_iqr = float(np.quantile(pooled, 0.75) - np.quantile(pooled, 0.25))
+        normalization_scale = pooled_iqr if pooled_iqr > 0 else float(pooled.std())
+        wasserstein = _wasserstein_distance(train_values, validation_values)
+        normalized_wasserstein = (
+            wasserstein / normalization_scale
+            if normalization_scale > 0
+            else (0.0 if wasserstein == 0 else np.inf)
+        )
+        rows.append(
+            {
+                "feature": column,
+                "train_mean": train_values.mean(),
+                "validation_mean": validation_values.mean(),
+                "train_median": np.median(train_values),
+                "validation_median": np.median(validation_values),
+                "train_q05": np.quantile(train_values, 0.05),
+                "validation_q05": np.quantile(validation_values, 0.05),
+                "train_q95": np.quantile(train_values, 0.95),
+                "validation_q95": np.quantile(validation_values, 0.95),
+                "standardized_mean_difference": _standardized_mean_difference(
+                    train_values, validation_values
+                ),
+                "normalized_wasserstein": normalized_wasserstein,
+            }
+        )
+    return pd.DataFrame(rows).set_index("feature")
+
+
+def summarize_categorical_split_balance(
+    dataframe: pd.DataFrame,
+    column: str,
+    split_column: str = "split",
+) -> pd.DataFrame:
+    """Compare category proportions between train and validation."""
+    required = {column, split_column}
+    missing = required - set(dataframe.columns)
+    if missing:
+        raise ValueError(f"Missing categorical balance columns: {sorted(missing)}")
+    labels = set(dataframe[split_column].dropna().unique())
+    if labels != {"train", "validation"}:
+        raise ValueError("split column must contain train and validation")
+
+    proportions = pd.crosstab(
+        dataframe[column],
+        dataframe[split_column],
+        normalize="columns",
+    )
+    for label in ("train", "validation"):
+        if label not in proportions:
+            proportions[label] = 0.0
+    proportions = proportions[["train", "validation"]]
+    proportions["absolute_difference"] = (
+        proportions["validation"] - proportions["train"]
+    ).abs()
+    return proportions
+
+
+def select_distribution_extremes(
+    dataframe: pd.DataFrame,
+    criteria: Mapping[str, tuple[str, str]],
+    tail_fraction: float = 0.025,
+) -> tuple[Mapping[str, pd.DataFrame], pd.DataFrame]:
+    """Select global distribution tails using common thresholds for all splits."""
+    if not 0 < tail_fraction < 0.5:
+        raise ValueError("tail_fraction must be between 0 and 0.5")
+
+    selections: dict[str, pd.DataFrame] = {}
+    threshold_rows = []
+    for name, (column, direction) in criteria.items():
+        if column not in dataframe:
+            raise ValueError(f"Missing extreme-case column: {column}")
+        if direction not in {"low", "high"}:
+            raise ValueError("Extreme direction must be low or high")
+        values = dataframe[column].to_numpy(dtype=float)
+        if not len(values) or not np.isfinite(values).all():
+            raise ValueError(f"Column {column} must contain finite values")
+
+        quantile = tail_fraction if direction == "low" else 1 - tail_fraction
+        threshold = float(dataframe[column].quantile(quantile))
+        mask = (
+            dataframe[column].le(threshold)
+            if direction == "low"
+            else dataframe[column].ge(threshold)
+        )
+        selections[name] = dataframe.loc[mask].copy()
+        threshold_rows.append(
+            {
+                "extreme_case": name,
+                "feature": column,
+                "direction": direction,
+                "quantile": quantile,
+                "threshold": threshold,
+            }
+        )
+    return selections, pd.DataFrame(threshold_rows).set_index("extreme_case")
