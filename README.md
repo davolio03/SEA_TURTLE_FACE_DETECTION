@@ -49,11 +49,14 @@ The perceptual hashing code in this repository is used only to detect duplicate 
 - Reproducible `GroupShuffleSplit` with unique groups for independent images.
 - Explicit assertion that no group appears in both train and validation.
 - Local persistence of the split at `data/splits/train_validation.csv`.
+- Normalized `xywh` to pixel `xyxy` conversion and round-trip conversion.
+- Explicit clipping and validation for normalized and pixel boxes.
+- Broadcast-compatible IoU for valid `xyxy` boxes.
+- Geometry tests covering conversions, clipping, validation, and IoU.
 
 ### Not implemented yet
 
-- General box conversion utilities such as normalized `xywh` to pixel `xyxy`.
-- IoU implementation and model evaluation.
+- Model-level IoU evaluation and error analysis.
 - PyTorch dataset, transforms, augmentations, or data loaders.
 - Bounding-box regression or object detection models.
 - Training, inference, checkpoints, or experiment tracking.
@@ -77,8 +80,12 @@ SEA_TURTLE_FACE_DETECTION/
 |   `-- turtle_detection/
 |       |-- __init__.py
 |       |-- box_analysis.py
+|       |-- box_geometry.py
+|       |-- image_quality.py
 |       |-- image_similarity.py
 |       `-- splitting.py
+|-- tests/
+|   `-- test_box_geometry.py
 |-- data/                       # Local only; excluded from Git
 |   |-- raw/
 |   `-- splits/
@@ -135,7 +142,7 @@ The project starts with the 512-pixel image archive to reduce storage, loading t
 
 ## Evaluation strategy
 
-The official competition metric is **Intersection over Union (IoU)** between the predicted and ground-truth bounding boxes. IoU will therefore be the primary local validation metric once prediction code exists.
+The official competition metric is **Intersection over Union (IoU)** between the predicted and ground-truth bounding boxes. The repository now includes a tested IoU utility; it will become the primary local validation metric once prediction code exists.
 
 Planned evaluation should include:
 
