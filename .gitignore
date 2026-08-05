@@ -9,6 +9,7 @@ __pycache__/
 data/
 outputs/
 DECISIONS.md
+.atl/
 
 # Editors and operating systems
 .vscode/
