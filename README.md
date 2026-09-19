@@ -1,6 +1,6 @@
 # Sea Turtle Face Detection
 
-> **Work in progress** - the repository currently implements dataset auditing, bounding-box analysis, duplicate review, and a leakage-aware train/validation split. It does not yet contain a trained detection model or competition submission pipeline.
+> **Work in progress** - the repository currently implements dataset auditing, bounding-box analysis, duplicate review, a leakage-aware split, and a reusable PyTorch data pipeline. It does not yet contain a trained detection model or competition submission pipeline.
 
 This project is based on the public Zindi competition [Local Ocean Conservation Sea Turtle Face Detection](https://zindi.africa/competitions/local-ocean-conservation-sea-turtle-face-detection). The task is to localize the facial scale region of a sea turtle by predicting one normalized bounding box for each image.
 
@@ -53,18 +53,24 @@ The perceptual hashing code in this repository is used only to detect duplicate 
 - Explicit clipping and validation for normalized and pixel boxes.
 - Broadcast-compatible IoU for valid `xyxy` boxes.
 - Geometry tests covering conversions, clipping, validation, and IoU.
+- A PyTorch Dataset that reads the accepted split and validates every annotation before loading.
+- Aspect-ratio-preserving letterbox transforms with box updates and optional train-time horizontal flipping.
+- Windows-safe train and validation DataLoaders with detection-style list targets.
+- A visual inspection notebook for batches, transformed boxes, and the selected device.
+- Data-pipeline tests covering letterbox geometry, flipping, split sizes, and target structure.
+- A ResNet18 direct `xywh` regression baseline with reusable training and IoU evaluation helpers.
+- A smoke-training notebook that runs on the available Windows CUDA device and visualizes predictions.
 
 ### Not implemented yet
 
 - Model-level IoU evaluation and error analysis.
-- PyTorch dataset, transforms, augmentations, or data loaders.
 - Bounding-box regression or object detection models.
 - Training, inference, checkpoints, or experiment tracking.
 - Submission generation.
 - Precision, recall, or mean Average Precision (mAP) evaluation.
 - Individual turtle identification or verification.
 
-No model scores, leaderboard results, or performance claims are reported because no model has been trained in this repository.
+The regression notebook includes only a short smoke run limited to a few batches. Its IoU is a pipeline check, not a benchmark or performance claim. No leaderboard result or full-training score is reported yet.
 
 ## Repository structure
 
@@ -75,17 +81,23 @@ SEA_TURTLE_FACE_DETECTION/
 |-- pyproject.toml
 |-- requirements.txt
 |-- notebooks/
-|   `-- 01_data_audit.ipynb
+|   |-- 01_data_audit.ipynb
+|   |-- 02_data_pipeline.ipynb
+|   `-- 03_regression_baseline.ipynb
 |-- src/
 |   `-- turtle_detection/
 |       |-- __init__.py
 |       |-- box_analysis.py
 |       |-- box_geometry.py
+|       |-- data_pipeline.py
 |       |-- image_quality.py
 |       |-- image_similarity.py
+|       |-- regression.py
 |       `-- splitting.py
 |-- tests/
-|   `-- test_box_geometry.py
+|   |-- test_box_geometry.py
+|   |-- test_data_pipeline.py
+|   `-- test_regression.py
 |-- data/                       # Local only; excluded from Git
 |   |-- raw/
 |   `-- splits/
@@ -110,11 +122,19 @@ PowerShell:
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+python -m pip install --use-feature=truststore -r requirements.txt
 python -m pip install -e . --no-deps
 ```
 
-The dependency versions are pinned to keep the current notebook environment reproducible.
+The dependency versions are pinned to keep the EDA and training environment reproducible. The `truststore` option uses the Windows certificate store when the default Python certificate bundle cannot validate `download.pytorch.org`.
+
+## Native Windows training feasibility
+
+Native Windows is suitable for the next training stages. The official [PyTorch installation guide](https://docs.pytorch.org/get-started/locally/) supports Windows and Python 3.11, and provides CUDA wheels without requiring a source build. This project was verified locally with `torch==2.8.0+cu128`, `torchvision==0.23.0+cu128`, and `torch.cuda.is_available() == True` on an NVIDIA GeForce RTX 3060 Laptop GPU with 6 GB VRAM.
+
+This hardware is enough for a lightweight regression baseline and small or medium pretrained detectors at the current 512-pixel image size. The practical limits are batch size, model size, input resolution, and experiment parallelism; 6 GB VRAM is not a good target for large detectors or high-resolution multi-model runs. The DataLoader defaults to `num_workers=0` because it is reliable in notebooks and avoids Windows multiprocessing-spawn issues. Worker processes can be increased later from a script entry point after measuring throughput.
+
+WSL2 or a Linux machine is not required now. It becomes useful only if a future dependency is Linux-only, if distributed training is needed, or if a larger GPU/cloud workflow is introduced. The model code should remain device-agnostic so the same training module can move between native Windows, WSL2, and Linux.
 
 ## Obtain the data from Zindi
 
@@ -180,8 +200,9 @@ Class imbalance, samples per individual, and evaluation by individual are identi
 - ImageHash
 - scikit-learn
 - JupyterLab and ipykernel
+- PyTorch and torchvision (training environment)
 
-PyTorch, OpenCV, object detection frameworks, transfer learning, and deep learning models are not currently implemented.
+OpenCV, object detection frameworks, transfer learning models, and experiment tracking are not currently implemented.
 
 ## Planned workflow
 
@@ -190,7 +211,7 @@ raw data
 -> integrity and annotation audit
 -> duplicate-aware grouped split
 -> box conversions and IoU tests
--> reusable dataset and transform pipeline
+-> reusable Dataset, transforms, and DataLoaders
 -> lightweight regression baseline
 -> validation and error analysis
 -> optional standard detector comparison

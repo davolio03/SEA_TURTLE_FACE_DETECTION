@@ -1,4 +1,4 @@
-# Environment for 01_data_audit.ipynb (Python 3.11)
+# Python 3.11 environment for EDA and Windows CUDA training
 numpy==2.3.5
 pandas==3.0.3
 matplotlib==3.11.1
@@ -7,3 +7,7 @@ jupyterlab==4.6.0
 ipykernel==7.3.0
 ImageHash==4.3.2
 scikit-learn==1.9.0
+# Official PyTorch CUDA 12.8 wheels for Windows.
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.8.0+cu128
+torchvision==0.23.0+cu128
