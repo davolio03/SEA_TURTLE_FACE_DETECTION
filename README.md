@@ -1,6 +1,6 @@
 # Sea Turtle Face Detection
 
-> **Work in progress** - the repository currently implements dataset auditing, bounding-box analysis, duplicate review, a leakage-aware split, and a reusable PyTorch data pipeline. It does not yet contain a trained detection model or competition submission pipeline.
+> **Work in progress** - the repository currently implements dataset auditing, bounding-box analysis, duplicate review, a leakage-aware split, a reusable PyTorch data pipeline, and a direct bounding-box regression baseline. It does not yet contain a standard object detector or competition submission pipeline.
 
 This project is based on the public Zindi competition [Local Ocean Conservation Sea Turtle Face Detection](https://zindi.africa/competitions/local-ocean-conservation-sea-turtle-face-detection). The task is to localize the facial scale region of a sea turtle by predicting one normalized bounding box for each image.
 
@@ -18,7 +18,7 @@ This task must not be confused with two related problems:
 
 | Task | Question | Implemented here? |
 |---|---|---|
-| Face detection / localization | Where is the turtle face? | Data preparation implemented; model not implemented |
+| Face detection / localization | Where is the turtle face? | Data preparation and a direct regression baseline implemented |
 | Individual identification | Which known turtle appears in the image? | No |
 | Verification | Do two images show the same individual? | No |
 
@@ -58,19 +58,20 @@ The perceptual hashing code in this repository is used only to detect duplicate 
 - Windows-safe train and validation DataLoaders with detection-style list targets.
 - A visual inspection notebook for batches, transformed boxes, and the selected device.
 - Data-pipeline tests covering letterbox geometry, flipping, split sizes, and target structure.
-- A ResNet18 direct `xywh` regression baseline with reusable training and IoU evaluation helpers.
-- A smoke-training notebook that runs on the available Windows CUDA device and visualizes predictions.
+- A ResNet18 direct `xywh` regression baseline with ImageNet-pretrained initialization, reusable training, and IoU evaluation helpers.
+- Best-checkpoint selection by validation mean IoU, saved locally under ignored `outputs/checkpoints/`.
+- A full-dataset training notebook that runs on the available Windows CUDA device and visualizes predictions.
 
 ### Not implemented yet
 
 - Model-level IoU evaluation and error analysis.
-- Bounding-box regression or object detection models.
-- Training, inference, checkpoints, or experiment tracking.
+- A standard object detector.
+- Inference, experiment tracking, and a competition submission pipeline.
 - Submission generation.
 - Precision, recall, or mean Average Precision (mAP) evaluation.
 - Individual turtle identification or verification.
 
-The regression notebook includes only a short smoke run limited to a few batches. Its IoU is a pipeline check, not a benchmark or performance claim. No leaderboard result or full-training score is reported yet.
+The regression notebook trains on the complete accepted train split and selects the checkpoint with the best validation mean IoU. This direct single-box regression baseline is not a full object detector: it does not predict multiple proposals, objectness scores, or classes. Its IoU remains a local baseline metric, not a leaderboard or competition-performance claim.
 
 ## Repository structure
 
@@ -162,7 +163,7 @@ The project starts with the 512-pixel image archive to reduce storage, loading t
 
 ## Evaluation strategy
 
-The official competition metric is **Intersection over Union (IoU)** between the predicted and ground-truth bounding boxes. The repository now includes a tested IoU utility; it will become the primary local validation metric once prediction code exists.
+The official competition metric is **Intersection over Union (IoU)** between the predicted and ground-truth bounding boxes. The repository includes a tested IoU utility and uses validation mean IoU to select the direct-regression checkpoint.
 
 Planned evaluation should include:
 

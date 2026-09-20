@@ -1,6 +1,8 @@
 """Tests for the bounding-box regression baseline helpers."""
 
 import unittest
+from pathlib import Path
+import tempfile
 
 import numpy as np
 import torch
@@ -10,6 +12,7 @@ from turtle_detection.regression import (
     evaluate_regression,
     fit_regression_model,
     intersection_over_union_tensor,
+    load_regression_checkpoint,
     normalized_xywh_to_xyxy_tensor,
 )
 
@@ -88,6 +91,32 @@ class RegressionTests(unittest.TestCase):
         self.assertEqual(metrics.predictions.shape, (2, 4))
         self.assertEqual(metrics.targets.shape, (2, 4))
         self.assertTrue(np.isfinite(metrics.ious).all())
+
+    def test_fit_saves_and_loads_best_iou_checkpoint(self) -> None:
+        torch.manual_seed(7)
+        model = TinyRegressor()
+        loader = synthetic_loader()
+
+        with tempfile.TemporaryDirectory() as directory:
+            checkpoint_path = Path(directory) / "best.pt"
+            history = fit_regression_model(
+                model,
+                loader,
+                loader,
+                epochs=2,
+                learning_rate=1e-2,
+                device=torch.device("cpu"),
+                checkpoint_path=checkpoint_path,
+            )
+
+            self.assertTrue(checkpoint_path.is_file())
+            payload = load_regression_checkpoint(
+                TinyRegressor(),
+                checkpoint_path,
+                device=torch.device("cpu"),
+            )
+            self.assertEqual(payload["epoch"], max(history, key=lambda row: row["validation_mean_iou"])["epoch"])
+            self.assertIn("optimizer_state_dict", payload)
 
 
 if __name__ == "__main__":

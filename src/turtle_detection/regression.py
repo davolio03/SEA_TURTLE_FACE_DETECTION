@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -200,19 +201,24 @@ def fit_regression_model(
     device: torch.device | None = None,
     max_train_batches: int | None = None,
     max_validation_batches: int | None = None,
+    checkpoint_path: str | Path | None = None,
 ) -> list[dict[str, float]]:
-    """Fit a model and return one train/validation record per epoch."""
+    """Fit a model and optionally save the checkpoint with the best validation IoU."""
     if epochs <= 0:
         raise ValueError("epochs must be positive")
     if learning_rate <= 0 or weight_decay < 0:
         raise ValueError("learning_rate must be positive and weight_decay non-negative")
     active_device = device or select_device()
+    checkpoint = Path(checkpoint_path) if checkpoint_path is not None else None
+    if checkpoint is not None:
+        checkpoint.parent.mkdir(parents=True, exist_ok=True)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=learning_rate,
         weight_decay=weight_decay,
     )
     history: list[dict[str, float]] = []
+    best_mean_iou = float("-inf")
     for epoch in range(epochs):
         train_loss = train_one_epoch(
             model,
@@ -227,13 +233,41 @@ def fit_regression_model(
             active_device,
             max_batches=max_validation_batches,
         )
-        history.append(
-            {
-                "epoch": float(epoch + 1),
-                "train_loss": train_loss,
-                "validation_loss": validation.mean_loss,
-                "validation_mean_iou": validation.mean_iou,
-                "validation_median_iou": validation.median_iou,
-            }
-        )
+        record = {
+            "epoch": float(epoch + 1),
+            "train_loss": train_loss,
+            "validation_loss": validation.mean_loss,
+            "validation_mean_iou": validation.mean_iou,
+            "validation_median_iou": validation.median_iou,
+        }
+        history.append(record)
+        if checkpoint is not None and validation.mean_iou > best_mean_iou:
+            best_mean_iou = validation.mean_iou
+            torch.save(
+                {
+                    "epoch": epoch + 1,
+                    "validation_mean_iou": validation.mean_iou,
+                    "validation_median_iou": validation.median_iou,
+                    "validation_loss": validation.mean_loss,
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                },
+                checkpoint,
+            )
     return history
+
+
+def load_regression_checkpoint(
+    model: nn.Module,
+    checkpoint_path: str | Path,
+    device: torch.device | None = None,
+    optimizer: torch.optim.Optimizer | None = None,
+) -> dict[str, Any]:
+    """Load a saved regression checkpoint and return its metadata."""
+    active_device = device or select_device()
+    payload = torch.load(checkpoint_path, map_location=active_device)
+    model.load_state_dict(payload["model_state_dict"])
+    model.to(active_device)
+    if optimizer is not None and "optimizer_state_dict" in payload:
+        optimizer.load_state_dict(payload["optimizer_state_dict"])
+    return payload
