@@ -1,6 +1,4 @@
-# Sea Turtle Face Detection
-
-This project audits the competition annotations, creates a duplicate-aware grouped train/validation split, compares a ResNet18 box-regression control with Faster R-CNN, tracks local experiments, and prepares a Zindi submission. The prediction target is one turtle-face bounding box per image; the primary metric is intersection over union (IoU), not accuracy.
+This repository documents a computer-vision project based on the [Local Ocean Conservation Sea Turtle Face Detection competition](https://zindi.africa/competitions/local-ocean-conservation-sea-turtle-face-detection). The task is to locate a sea-turtle face with one bounding box per image. The project explores the annotations, prevents near-duplicate leakage in a grouped train/validation split, and compares a ResNet18 box-regression control with a pretrained Faster R-CNN detector. It is an object-detection task, not individual-turtle identification; performance is measured with intersection over union (IoU), not classification accuracy.
 
 ## Data and setup
 
@@ -35,11 +33,9 @@ Run notebooks in order from the repository root:
 4. `notebooks/04_faster_rcnn_experiment.ipynb` trains Faster R-CNN, records train and validation losses plus IoU metrics in local MLflow, and selects the best checkpoint by validation mean IoU.
 5. `notebooks/05_zindi_submission.ipynb` loads a local checkpoint, predicts the supplied sample IDs, validates the output schema, and writes a local CSV. It does not upload a submission.
 
-The detector validation loss is a diagnostic: its region-proposal sampling may be stochastic, and horizontal flips are applied only during training. The loss curves are therefore not an exact same-objective comparison between train and validation. Validation IoU remains the checkpoint-selection metric.
+Read the train and validation loss curves as diagnostics, not as a strict like-for-like comparison. Training images may be randomly flipped horizontally; validation images are not, so the losses are computed on somewhat different inputs. Faster R-CNN also samples image regions when calculating its loss, which can make validation loss vary between evaluations. The curves are useful for broad trends, but validation mean IoU (the overlap between predicted and true boxes) is used to select the best checkpoint. Validation loss is recorded in new training runs; older runs predate that metric and only have training-loss history.
 
 ## Results and verification
-
-The eight reviewed related-capture pairs are recorded as image-ID tuples in section 11 of the audit notebook so the grouping decisions are reproducible. These IDs refer to downloaded images, not individual turtles; raw competition images remain local and are not included in the repository.
 
 The Faster R-CNN experiment reached validation mean IoU of approximately `0.9185` at epoch 8. The competition score of approximately `0.91` is user-reported and has not been independently verified here. These figures describe box localization only; the project does not claim individual-turtle identification.
 
