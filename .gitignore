@@ -16,3 +16,40 @@ DECISIONS.md
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local agent instructions
+AGENTS.md
+
+# Local agent state, task tracking, and notebook URI smoke tests
+.agents/
+.codex/
+odd/
+C%3A/
+
+# Local experiment records and MLflow state
+experiments.csv
+mlruns/
+mlartifacts/
+outputs/mlflow/
+*.db
+*.db-shm
+*.db-wal
+
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+secrets.*
+*.pem
+*.key
+
+# Model weights, caches, and build output
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.safetensors
+.cache/
+build/
+dist/
+*.egg-info/
