@@ -98,6 +98,7 @@ class DataPipelineTests(unittest.TestCase):
             project_root,
             batch_size=4,
             num_workers=0,
+            normalize=False,
         )
 
         self.assertEqual(len(train_loader.dataset), 1062)
@@ -106,6 +107,8 @@ class DataPipelineTests(unittest.TestCase):
         self.assertEqual(len(images), 4)
         self.assertEqual(len(targets), 4)
         self.assertEqual(tuple(images[0].shape), (3, 384, 512))
+        self.assertGreaterEqual(float(images[0].min()), 0.0)
+        self.assertLessEqual(float(images[0].max()), 1.0)
 
 
 if __name__ == "__main__":

@@ -42,6 +42,7 @@ class LetterboxTransform:
     std: tuple[float, float, float] = DEFAULT_STD
 
     def __post_init__(self) -> None:
+        """Validate canvas size, flip probability, and RGB normalization settings."""
         height, width = self.target_size
         if height <= 0 or width <= 0:
             raise ValueError("target_size dimensions must be positive")
@@ -57,11 +58,21 @@ class LetterboxTransform:
         image: Image.Image,
         box_xyxy: np.ndarray,
     ) -> tuple[torch.Tensor, np.ndarray]:
+        """Letterbox an RGB image and transform its pixel xyxy box consistently.
+
+        Args:
+            image: PIL image in any supported mode; it is converted to RGB.
+            box_xyxy: Valid box in original-image pixel coordinates.
+
+        Returns:
+            Float CHW image tensor and transformed float32 xyxy box.
+        """
         image = image.convert("RGB")
         original_width, original_height = image.size
         validate_xyxy(box_xyxy, original_width, original_height)
 
         target_height, target_width = self.target_size
+        # Fit within the canvas without stretching faces or changing their aspect ratio.
         scale = min(target_width / original_width, target_height / original_height)
         resized_width = max(1, round(original_width * scale))
         resized_height = max(1, round(original_height * scale))
@@ -75,12 +86,14 @@ class LetterboxTransform:
         canvas = Image.new("RGB", (target_width, target_height), (0, 0, 0))
         canvas.paste(resized, (left, top))
 
+        # Apply the same scale and padding offsets to the annotation as to the image.
         transformed_box = np.asarray(box_xyxy, dtype=np.float64).copy()
         transformed_box[[0, 2]] = transformed_box[[0, 2]] * scale + left
         transformed_box[[1, 3]] = transformed_box[[1, 3]] * scale + top
 
         if random.random() < self.horizontal_flip_probability:
             canvas = canvas.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+            # Mirror both box edges; swapping their transformed positions preserves x1 <= x2.
             x1, _, x2, _ = transformed_box
             transformed_box[0] = target_width - x2
             transformed_box[2] = target_width - x1
@@ -92,6 +105,7 @@ class LetterboxTransform:
         )
         validate_xyxy(transformed_box, target_width, target_height)
 
+        # TorchVision detectors normalize internally; callers can disable this extra normalization.
         array = np.asarray(canvas, dtype=np.float32) / 255.0
         tensor = torch.from_numpy(array).permute(2, 0, 1).contiguous()
         if self.normalize:
@@ -112,6 +126,15 @@ class SeaTurtleDataset(Dataset[tuple[torch.Tensor, dict[str, Any]]]):
         split_name: str,
         transform: LetterboxTransform | None = None,
     ) -> None:
+        """Initialize paths, split selection, and the annotation-backed records.
+
+        Args:
+            annotations_path: CSV with image IDs and normalized xywh labels.
+            split_path: CSV assigning every ID to a named partition.
+            image_dir: Directory containing local image files.
+            split_name: Partition value to load, normally train or validation.
+            transform: Per-image transform; defaults to a non-augmented letterbox.
+        """
         self.annotations_path = Path(annotations_path)
         self.split_path = Path(split_path)
         self.image_dir = Path(image_dir)
@@ -120,6 +143,11 @@ class SeaTurtleDataset(Dataset[tuple[torch.Tensor, dict[str, Any]]]):
         self.records = self._load_records()
 
     def _load_records(self) -> pd.DataFrame:
+        """Join annotations to the selected split and validate rows and image files.
+
+        Returns:
+            One validated annotation row per image in the requested split.
+        """
         annotations = pd.read_csv(self.annotations_path)
         required_annotations = {"Image_ID", "x", "y", "w", "h"}
         missing_annotations = required_annotations.difference(annotations.columns)
@@ -156,6 +184,14 @@ class SeaTurtleDataset(Dataset[tuple[torch.Tensor, dict[str, Any]]]):
         return records.reset_index(drop=True)
 
     def _image_path(self, image_id: str) -> Path:
+        """Resolve an ID using the supported case-sensitive image suffixes.
+
+        Args:
+            image_id: Annotation identifier without an extension.
+
+        Returns:
+            Existing image path when found, or the default expected path.
+        """
         for suffix in (".JPG", ".jpg", ".JPEG", ".jpeg", ".png"):
             candidate = self.image_dir / f"{image_id}{suffix}"
             if candidate.is_file():
@@ -163,9 +199,18 @@ class SeaTurtleDataset(Dataset[tuple[torch.Tensor, dict[str, Any]]]):
         return self.image_dir / f"{image_id}.JPG"
 
     def __len__(self) -> int:
+        """Return the number of validated records in this split."""
         return len(self.records)
 
     def __getitem__(self, index: int) -> tuple[torch.Tensor, dict[str, Any]]:
+        """Load one image and return its transformed tensor and detector target.
+
+        Args:
+            index: Zero-based row index in the selected split.
+
+        Returns:
+            Letterboxed image and target retaining original-frame annotation data.
+        """
         row = self.records.iloc[index]
         image_id = str(row["Image_ID"])
         with Image.open(self._image_path(image_id)) as opened_image:
@@ -184,6 +229,7 @@ class SeaTurtleDataset(Dataset[tuple[torch.Tensor, dict[str, Any]]]):
             target_width,
             target_height,
         ).astype(np.float32)
+        # Train on transformed boxes but retain original annotations for original-frame scoring.
         target: dict[str, Any] = {
             "boxes": torch.as_tensor(transformed_box, dtype=torch.float32).view(1, 4),
             "labels": torch.ones(1, dtype=torch.int64),
@@ -198,7 +244,15 @@ class SeaTurtleDataset(Dataset[tuple[torch.Tensor, dict[str, Any]]]):
 def detection_collate_fn(
     batch: list[tuple[torch.Tensor, dict[str, Any]]],
 ) -> tuple[list[torch.Tensor], list[dict[str, Any]]]:
-    """Keep variable-length detection targets as lists instead of stacking them."""
+    """Keep variable-length detection targets as lists instead of stacking them.
+
+    Args:
+        batch: Image/target pairs from ``SeaTurtleDataset``.
+
+    Returns:
+        Separate image and target lists compatible with TorchVision detectors.
+    """
+    # Detection samples can have different numbers of boxes, so batch them as per-image lists.
     images, targets = zip(*batch)
     return list(images), list(targets)
 
@@ -208,8 +262,20 @@ def create_data_loaders(
     batch_size: int = 8,
     num_workers: int = 0,
     target_size: tuple[int, int] = DEFAULT_TARGET_SIZE,
+    normalize: bool = True,
 ) -> tuple[DataLoader, DataLoader]:
-    """Create Windows-safe train and validation loaders from project paths."""
+    """Create Windows-safe train and validation loaders from project paths.
+
+    Args:
+        project_root: Repository root containing local data files.
+        batch_size: Images per batch for both partitions.
+        num_workers: DataLoader workers; zero avoids notebook spawn issues.
+        target_size: Letterbox canvas as ``(height, width)``.
+        normalize: Apply ImageNet normalization in the shared transform.
+
+    Returns:
+        Shuffled training loader with train-only flips and ordered validation loader.
+    """
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
     if num_workers < 0:
@@ -224,15 +290,20 @@ def create_data_loaders(
         split_path,
         image_dir,
         split_name="train",
-        transform=LetterboxTransform(target_size, horizontal_flip_probability=0.5),
+        transform=LetterboxTransform(
+            target_size,
+            horizontal_flip_probability=0.5,
+            normalize=normalize,
+        ),
     )
     validation_dataset = SeaTurtleDataset(
         annotations_path,
         split_path,
         image_dir,
         split_name="validation",
-        transform=LetterboxTransform(target_size),
+        transform=LetterboxTransform(target_size, normalize=normalize),
     )
+    # Zero workers avoids Windows multiprocessing startup issues for this small local dataset.
     loader_kwargs = {
         "batch_size": batch_size,
         "num_workers": num_workers,

@@ -22,6 +22,9 @@ dependencies = [
 dev = [
     "pytest>=8.2,<9",
 ]
+tracking = [
+    "mlflow==3.16.1",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

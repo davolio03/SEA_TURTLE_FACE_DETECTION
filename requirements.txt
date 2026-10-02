@@ -7,6 +7,7 @@ jupyterlab==4.6.0
 ipykernel==7.3.0
 ImageHash==4.3.2
 scikit-learn==1.9.0
+mlflow==3.16.1
 # Official PyTorch CUDA 12.8 wheels for Windows.
 --extra-index-url https://download.pytorch.org/whl/cu128
 torch==2.8.0+cu128
