@@ -10,6 +10,14 @@ BoxArray = np.ndarray | Sequence[float] | Sequence[Sequence[float]]
 
 
 def _as_box_array(boxes: BoxArray) -> np.ndarray:
+    """Convert box input to float64 and require a final coordinate dimension of four.
+
+    Args:
+        boxes: One xywh/xyxy box or an array of boxes.
+
+    Returns:
+        A NumPy array preserving the leading batch dimensions.
+    """
     result = np.asarray(boxes, dtype=np.float64)
     if result.ndim == 0 or result.shape[-1] != 4:
         raise ValueError("boxes must have shape (..., 4)")
@@ -17,6 +25,12 @@ def _as_box_array(boxes: BoxArray) -> np.ndarray:
 
 
 def _validate_image_size(image_width: float, image_height: float) -> None:
+    """Reject non-finite or non-positive image dimensions.
+
+    Args:
+        image_width: Image width in pixels.
+        image_height: Image height in pixels.
+    """
     dimensions = np.asarray([image_width, image_height], dtype=np.float64)
     if not np.isfinite(dimensions).all() or (dimensions <= 0).any():
         raise ValueError("image dimensions must be finite and positive")
@@ -27,7 +41,16 @@ def normalized_xywh_to_pixel_xyxy(
     image_width: float,
     image_height: float,
 ) -> np.ndarray:
-    """Convert normalized top-left xywh boxes to pixel xyxy coordinates."""
+    """Convert normalized top-left xywh boxes to pixel xyxy coordinates.
+
+    Args:
+        boxes: One box or broadcastable array with final ``x, y, w, h`` axis.
+        image_width: Positive image width in pixels.
+        image_height: Positive image height in pixels.
+
+    Returns:
+        Float64 xyxy coordinates in the image's pixel frame.
+    """
     _validate_image_size(image_width, image_height)
     source = _as_box_array(boxes)
     result = np.empty_like(source)
@@ -43,7 +66,16 @@ def pixel_xyxy_to_normalized_xywh(
     image_width: float,
     image_height: float,
 ) -> np.ndarray:
-    """Convert pixel xyxy boxes to normalized top-left xywh coordinates."""
+    """Convert pixel xyxy boxes to normalized top-left xywh coordinates.
+
+    Args:
+        boxes: One box or broadcastable array with final ``x1, y1, x2, y2`` axis.
+        image_width: Positive image width in pixels.
+        image_height: Positive image height in pixels.
+
+    Returns:
+        Float64 normalized ``x, y, w, h`` coordinates.
+    """
     _validate_image_size(image_width, image_height)
     source = _as_box_array(boxes)
     result = np.empty_like(source)
@@ -59,7 +91,16 @@ def clip_xyxy_to_image(
     image_width: float,
     image_height: float,
 ) -> np.ndarray:
-    """Clip pixel xyxy coordinates to the closed image boundary."""
+    """Clip pixel xyxy coordinates to the closed image boundary.
+
+    Args:
+        boxes: Pixel coordinates with final ``x1, y1, x2, y2`` axis.
+        image_width: Positive image width in pixels.
+        image_height: Positive image height in pixels.
+
+    Returns:
+        Copy clipped to ``[0, width] x [0, height]``; validity is not implied.
+    """
     _validate_image_size(image_width, image_height)
     result = _as_box_array(boxes).copy()
     result[..., (0, 2)] = np.clip(result[..., (0, 2)], 0, image_width)
@@ -68,7 +109,14 @@ def clip_xyxy_to_image(
 
 
 def valid_normalized_xywh_mask(boxes: BoxArray) -> np.ndarray:
-    """Return validity for finite, positive, in-bounds normalized xywh boxes."""
+    """Return validity for finite, positive, in-bounds normalized xywh boxes.
+
+    Args:
+        boxes: Normalized boxes with final ``x, y, w, h`` axis.
+
+    Returns:
+        Boolean mask over leading dimensions; coordinates must fit in ``[0, 1]``.
+    """
     values = _as_box_array(boxes)
     finite = np.isfinite(values).all(axis=-1)
     return (
@@ -87,7 +135,16 @@ def valid_xyxy_mask(
     image_width: float | None = None,
     image_height: float | None = None,
 ) -> np.ndarray:
-    """Return validity for finite pixel xyxy boxes, optionally within an image."""
+    """Return validity for finite pixel xyxy boxes, optionally within an image.
+
+    Args:
+        boxes: Pixel boxes with final ``x1, y1, x2, y2`` axis.
+        image_width: Optional positive image width; must pair with height.
+        image_height: Optional positive image height; must pair with width.
+
+    Returns:
+        Boolean mask for positive-area boxes and, when given, in-image bounds.
+    """
     if (image_width is None) != (image_height is None):
         raise ValueError("provide both image dimensions or neither")
     if image_width is not None and image_height is not None:
@@ -110,7 +167,11 @@ def valid_xyxy_mask(
 
 
 def validate_normalized_xywh(boxes: BoxArray) -> None:
-    """Raise when any normalized xywh box is empty, non-finite, or out of bounds."""
+    """Raise when any normalized xywh box is empty, non-finite, or out of bounds.
+
+    Args:
+        boxes: Normalized boxes with final ``x, y, w, h`` axis.
+    """
     valid = valid_normalized_xywh_mask(boxes)
     if not np.asarray(valid).all():
         raise ValueError("normalized xywh boxes must be finite, positive, and in bounds")
@@ -121,7 +182,13 @@ def validate_xyxy(
     image_width: float | None = None,
     image_height: float | None = None,
 ) -> None:
-    """Raise when any xyxy box is empty, non-finite, or outside given bounds."""
+    """Raise when any xyxy box is empty, non-finite, or outside given bounds.
+
+    Args:
+        boxes: Pixel boxes with final ``x1, y1, x2, y2`` axis.
+        image_width: Optional positive image width; must pair with height.
+        image_height: Optional positive image height; must pair with width.
+    """
     valid = valid_xyxy_mask(boxes, image_width, image_height)
     if not np.asarray(valid).all():
         raise ValueError("xyxy boxes must be finite, positive, and within bounds")
@@ -131,7 +198,15 @@ def intersection_over_union_xyxy(
     first_boxes: BoxArray,
     second_boxes: BoxArray,
 ) -> np.ndarray:
-    """Compute aligned IoU for broadcast-compatible valid xyxy boxes."""
+    """Compute aligned IoU for broadcast-compatible valid xyxy boxes.
+
+    Args:
+        first_boxes: Valid xyxy boxes from the first collection.
+        second_boxes: Valid xyxy boxes broadcast-compatible with the first.
+
+    Returns:
+        Intersection-over-union values for each aligned/broadcast pair.
+    """
     first = _as_box_array(first_boxes)
     second = _as_box_array(second_boxes)
     validate_xyxy(first)

@@ -11,7 +11,14 @@ BOX_COLUMNS = ("x", "y", "w", "h")
 
 
 def add_box_features(dataframe: pd.DataFrame) -> pd.DataFrame:
-    """Return a copy with normalized geometry features for each box."""
+    """Return a copy with normalized geometry features for each box.
+
+    Args:
+        dataframe: Rows with normalized top-left ``x, y, w, h`` columns.
+
+    Returns:
+        Copy with center, area, aspect ratio, border distance, and center distance.
+    """
     missing = set(BOX_COLUMNS) - set(dataframe.columns)
     if missing:
         raise ValueError(f"Missing box columns: {sorted(missing)}")
@@ -38,7 +45,14 @@ def add_box_features(dataframe: pd.DataFrame) -> pd.DataFrame:
 
 
 def invalid_box_mask(dataframe: pd.DataFrame) -> pd.Series:
-    """Return True for non-finite, empty, or out-of-bounds normalized boxes."""
+    """Return True for non-finite, empty, or out-of-bounds normalized boxes.
+
+    Args:
+        dataframe: Rows containing normalized top-left ``x, y, w, h`` columns.
+
+    Returns:
+        Boolean Series aligned to the input index.
+    """
     boxes = dataframe.loc[:, BOX_COLUMNS]
     finite = np.isfinite(boxes.to_numpy()).all(axis=1)
     valid = (
@@ -57,7 +71,15 @@ def select_extreme_boxes(
     dataframe: pd.DataFrame,
     count: int = 20,
 ) -> Mapping[str, pd.DataFrame]:
-    """Select representative geometric extremes for visual review."""
+    """Select representative geometric extremes for visual review.
+
+    Args:
+        dataframe: Labeled rows containing valid normalized box columns.
+        count: Maximum number of rows selected in each extreme category.
+
+    Returns:
+        Named samples for small/large, aspect-ratio, border, and center extremes.
+    """
     if count < 1:
         raise ValueError("count must be at least 1")
 

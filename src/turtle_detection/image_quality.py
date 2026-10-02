@@ -11,7 +11,14 @@ from PIL import Image
 
 
 def _laplacian_variance(grayscale: np.ndarray) -> float:
-    """Return a relative sharpness score from normalized grayscale pixels."""
+    """Return relative sharpness as the variance of a 4-neighbor Laplacian.
+
+    Args:
+        grayscale: Two-dimensional normalized luminance array at least 3x3.
+
+    Returns:
+        Relative sharpness score; it is not an absolute blur classification.
+    """
     if grayscale.ndim != 2:
         raise ValueError("grayscale must be a two-dimensional array")
     if min(grayscale.shape) < 3:
@@ -29,7 +36,14 @@ def _laplacian_variance(grayscale: np.ndarray) -> float:
 
 
 def measure_image_quality(image_path: Path) -> dict[str, object]:
-    """Measure image geometry, luminance, contrast, and relative sharpness."""
+    """Measure image geometry, luminance, contrast, and relative sharpness.
+
+    Args:
+        image_path: Readable local image file.
+
+    Returns:
+        ID, dimensions, aspect ratio, mean luminance, 5-95% contrast, and sharpness.
+    """
     with Image.open(image_path) as image:
         rgb = np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0
 
@@ -52,7 +66,14 @@ def measure_image_quality(image_path: Path) -> dict[str, object]:
 
 
 def analyze_image_quality(image_paths: Iterable[Path]) -> pd.DataFrame:
-    """Return deterministic geometry and quality measurements for image paths."""
+    """Return deterministic geometry and quality measurements for image paths.
+
+    Args:
+        image_paths: Paths to unique image files.
+
+    Returns:
+        ID-sorted measurements, or a typed empty table for an empty iterable.
+    """
     rows = [measure_image_quality(Path(path)) for path in image_paths]
     result = pd.DataFrame(rows)
     if result.empty:

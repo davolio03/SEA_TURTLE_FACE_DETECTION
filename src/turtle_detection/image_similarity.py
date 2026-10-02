@@ -15,7 +15,15 @@ def compute_perceptual_hashes(
     image_paths: Iterable[Path],
     hash_size: int = 8,
 ) -> dict[str, imagehash.ImageHash]:
-    """Compute pHash values keyed by image stem."""
+    """Compute pHash values keyed by image stem.
+
+    Args:
+        image_paths: Paths to readable local image files.
+        hash_size: pHash width; values of at least two are accepted.
+
+    Returns:
+        Mapping from each file stem to its perceptual hash.
+    """
     if hash_size < 2:
         raise ValueError("hash_size must be at least 2")
 
@@ -30,7 +38,15 @@ def find_similar_pairs(
     hashes: Mapping[str, imagehash.ImageHash],
     max_distance: int = 6,
 ) -> pd.DataFrame:
-    """Return all pHash pairs within a Hamming-distance threshold."""
+    """Return all pHash pairs within a Hamming-distance threshold.
+
+    Args:
+        hashes: Image IDs and already-computed perceptual hashes.
+        max_distance: Maximum inclusive Hamming distance for candidate pairs.
+
+    Returns:
+        Sorted candidate-pair table; similarity is only a review signal.
+    """
     if max_distance < 0:
         raise ValueError("max_distance cannot be negative")
 
@@ -57,17 +73,27 @@ def build_similarity_groups(
     image_ids: Iterable[str],
     pairs: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Build connected components from reviewed similar-image pairs."""
+    """Build connected components from reviewed similar-image pairs.
+
+    Args:
+        image_ids: Complete set of labeled image IDs to include.
+        pairs: Manually reviewed pairs; pHash candidates alone are not accepted.
+
+    Returns:
+        Sorted image-to-component table, using ``-1`` for singleton images.
+    """
     ids = sorted(set(image_ids))
     parent = {image_id: image_id for image_id in ids}
 
     def find(image_id: str) -> str:
+        """Find a component root while compressing the path to that root."""
         while parent[image_id] != image_id:
             parent[image_id] = parent[parent[image_id]]
             image_id = parent[image_id]
         return image_id
 
     def union(left_id: str, right_id: str) -> None:
+        """Merge the roots for two reviewed image IDs."""
         left_root, right_root = find(left_id), find(right_id)
         if left_root != right_root:
             parent[right_root] = left_root
@@ -90,7 +116,15 @@ def build_similarity_groups(
 
 
 def select_pair_rows(pairs: pd.DataFrame, indices: Sequence[int]) -> pd.DataFrame:
-    """Select manually reviewed candidate pairs by row index."""
+    """Select manually reviewed candidate pairs by row index.
+
+    Args:
+        pairs: Candidate table whose current row positions are known.
+        indices: Zero-based row indices selected for review.
+
+    Returns:
+        Selected rows with a fresh zero-based index.
+    """
     return pairs.loc[list(indices)].reset_index(drop=True)
 
 
@@ -98,7 +132,15 @@ def select_reviewed_pairs(
     pairs: pd.DataFrame,
     reviewed_pairs: Iterable[tuple[str, str]],
 ) -> pd.DataFrame:
-    """Select reviewed pairs by image IDs, independent of row ordering."""
+    """Select reviewed pairs by image IDs, independent of row ordering.
+
+    Args:
+        pairs: Candidate table containing left/right IDs and pHash distances.
+        reviewed_pairs: Manually confirmed unordered image-ID pairs.
+
+    Returns:
+        Confirmed candidates sorted by distance; absent pairs raise ``ValueError``.
+    """
     canonical = {tuple(sorted(pair)) for pair in reviewed_pairs}
     available = {
         tuple(sorted((row.left_id, row.right_id))): index
