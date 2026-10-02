@@ -15,7 +15,11 @@ from torchvision import models
 
 @dataclass(frozen=True)
 class RegressionMetrics:
-    """Aggregated metrics and per-image values for one validation pass."""
+    """Aggregated metrics and per-image values for one validation pass.
+
+    Arrays and tuples preserve loader order so IoU outliers can be traced back to
+    the corresponding ``image_ids`` without reopening the validation pass.
+    """
 
     mean_loss: float
     mean_iou: float
@@ -27,9 +31,19 @@ class RegressionMetrics:
 
 
 class BoxRegressor(nn.Module):
-    """ResNet18 backbone with a four-value normalized xywh regression head."""
+    """ResNet18 backbone with a four-value normalized xywh regression head.
+
+    Inputs are RGB image tensors normalized by the data pipeline. The sigmoid head
+    constrains each output value to the normalized ``xywh`` interval.
+    """
 
     def __init__(self, pretrained: bool = False, dropout: float = 0.1) -> None:
+        """Create the ResNet18 control model and replace its classification head.
+
+        Args:
+            pretrained: Load ImageNet weights when true.
+            dropout: Dropout probability immediately before the box regressor.
+        """
         super().__init__()
         if not 0.0 <= dropout < 1.0:
             raise ValueError("dropout must be in [0, 1)")
@@ -43,22 +57,51 @@ class BoxRegressor(nn.Module):
         self.backbone = backbone
 
     def forward(self, images: Tensor) -> Tensor:
-        """Return normalized xywh values bounded to the [0, 1] interval."""
+        """Return one normalized xywh prediction per image.
+
+        Args:
+            images: Batch tensor shaped ``(batch, channels, height, width)``.
+
+        Returns:
+            Tensor shaped ``(batch, 4)`` with values in ``[0, 1]``.
+        """
         return torch.sigmoid(self.backbone(images))
 
 
 def select_device() -> torch.device:
-    """Select CUDA when available and otherwise fall back to CPU."""
+    """Return CUDA when available, otherwise CPU.
+
+    Returns:
+        Device for local model training or evaluation.
+    """
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def _stack_images(images: list[Tensor], device: torch.device) -> Tensor:
+    """Stack a non-empty image list and move it to the selected device.
+
+    Args:
+        images: Same-shaped image tensors from one batch.
+        device: Destination device.
+
+    Returns:
+        A batched image tensor.
+    """
     if not images:
         raise ValueError("a batch must contain at least one image")
     return torch.stack(images).to(device, non_blocking=device.type == "cuda")
 
 
 def _stack_targets(targets: list[dict[str, Any]], device: torch.device) -> Tensor:
+    """Stack normalized xywh targets from a non-empty batch.
+
+    Args:
+        targets: Per-image target dictionaries with ``normalized_xywh`` tensors.
+        device: Destination device.
+
+    Returns:
+        Batched normalized xywh tensor.
+    """
     if not targets:
         raise ValueError("a batch must contain at least one target")
     return torch.stack([target["normalized_xywh"] for target in targets]).to(device)
@@ -111,6 +154,16 @@ def _run_batch(
     batch: tuple[list[Tensor], list[dict[str, Any]]],
     device: torch.device,
 ) -> tuple[Tensor, Tensor, list[dict[str, Any]]]:
+    """Run one regression batch and return loss, predictions, and source targets.
+
+    Args:
+        model: Box regressor in its caller-selected train/eval mode.
+        batch: Image and target lists from the detection-style loader.
+        device: Device for image, target, and model computation.
+
+    Returns:
+        Scalar Smooth L1 loss, predicted normalized xywh boxes, and targets.
+    """
     images, targets = batch
     stacked_images = _stack_images(images, device)
     stacked_targets = _stack_targets(targets, device)

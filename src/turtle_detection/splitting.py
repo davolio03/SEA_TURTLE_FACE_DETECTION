@@ -11,7 +11,15 @@ from sklearn.model_selection import GroupShuffleSplit
 
 
 def assign_split_groups(similarity_groups: pd.DataFrame) -> pd.DataFrame:
-    """Assign a stable unique group to every singleton image."""
+    """Assign a stable unique group to every singleton image.
+
+    Args:
+        similarity_groups: Rows containing ``Image_ID`` and reviewed group IDs;
+            negative IDs denote independent singleton images.
+
+    Returns:
+        Copy with non-overlapping integer ``group_id`` values for every image.
+    """
     required = {"Image_ID", "similarity_group"}
     missing = required - set(similarity_groups.columns)
     if missing:
@@ -44,7 +52,17 @@ def create_group_shuffle_split(
     validation_size: float = 0.2,
     random_state: int = 42,
 ) -> pd.DataFrame:
-    """Create one reproducible split while keeping every group together."""
+    """Create one reproducible split while keeping every group together.
+
+    Args:
+        dataframe: Unique labeled image rows containing ``Image_ID``.
+        groups: Complete image-to-group mapping with ``group_id`` values.
+        validation_size: Approximate fraction of groups assigned to validation.
+        random_state: Seed supplied to scikit-learn's group splitter.
+
+    Returns:
+        Sorted image IDs with group IDs and train/validation labels.
+    """
     if not 0 < validation_size < 1:
         raise ValueError("validation_size must be between 0 and 1")
     if dataframe["Image_ID"].duplicated().any():
@@ -75,7 +93,11 @@ def create_group_shuffle_split(
 
 
 def assert_no_group_leakage(assignments: pd.DataFrame) -> None:
-    """Raise when any group appears in more than one split."""
+    """Raise when any group appears in more than one split.
+
+    Args:
+        assignments: Rows containing ``group_id`` and ``split`` columns.
+    """
     split_counts = assignments.groupby("group_id")["split"].nunique()
     leaking_groups = split_counts[split_counts > 1].index.tolist()
     if leaking_groups:
@@ -83,7 +105,12 @@ def assert_no_group_leakage(assignments: pd.DataFrame) -> None:
 
 
 def save_split(assignments: pd.DataFrame, destination: Path) -> None:
-    """Persist deterministic split assignments as CSV."""
+    """Persist deterministic split assignments as CSV.
+
+    Args:
+        assignments: Image/group/split table to persist.
+        destination: Local CSV path; parent directories are created if needed.
+    """
     destination.parent.mkdir(parents=True, exist_ok=True)
     assignments.to_csv(destination, index=False)
 
@@ -92,6 +119,15 @@ def _standardized_mean_difference(
     train_values: np.ndarray,
     validation_values: np.ndarray,
 ) -> float:
+    """Measure train-to-validation mean displacement in pooled SD units.
+
+    Args:
+        train_values: Finite numeric values from the training partition.
+        validation_values: Finite numeric values from the validation partition.
+
+    Returns:
+        Signed standardized mean difference, or infinity for unequal constants.
+    """
     pooled_variance = (train_values.var() + validation_values.var()) / 2
     if pooled_variance == 0:
         return 0.0 if train_values.mean() == validation_values.mean() else np.inf
