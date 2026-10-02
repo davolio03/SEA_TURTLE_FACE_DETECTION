@@ -16,9 +16,7 @@ Use Python 3.11. From the repository root, create the environment and install th
 ```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install --use-feature=truststore -r requirements.txt
-python -m pip install -e ".[dev]"
+python -m pip install --use-feature=truststore -r requirements.txt -e ".[dev]"
 ```
 
 The `src/turtle_detection` package is installed from the project configuration. Raw data, generated splits, checkpoints, submission files, MLflow databases, and MLflow artifacts stay local and are ignored by Git.
