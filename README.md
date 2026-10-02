@@ -39,7 +39,7 @@ The detector validation loss is a diagnostic: its region-proposal sampling may b
 
 ## Results and verification
 
-The reviewed related-capture pairs are stored locally in `data/splits/reviewed_related_pairs.json`; if that ignored file is missing, recreate it by visually reviewing and saving the confirmed pairs before running the audit notebook.
+The eight reviewed related-capture pairs are recorded as image-ID tuples in section 11 of the audit notebook so the grouping decisions are reproducible. These IDs refer to downloaded images, not individual turtles; raw competition images remain local and are not included in the repository.
 
 The Faster R-CNN experiment reached validation mean IoU of approximately `0.9185` at epoch 8. The competition score of approximately `0.91` is user-reported and has not been independently verified here. These figures describe box localization only; the project does not claim individual-turtle identification.
 
