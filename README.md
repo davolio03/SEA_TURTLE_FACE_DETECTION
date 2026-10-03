@@ -35,7 +35,7 @@ Read the train and validation loss curves as diagnostics, not as a strict like-f
 
 ## Results and verification
 
-The Faster R-CNN experiment reached validation mean IoU of approximately `0.9185` at epoch 8. The competition score of approximately `0.91` is user-reported and has not been independently verified here. These figures describe box localization only; the project does not claim individual-turtle identification.
+The Faster R-CNN experiment reached validation mean IoU of approximately `0.9185` at epoch 8. The submission ranked 12th among 80 leaderboard entries (score: `0.91`; as of 2026-10-03). The competition score and rank are user-reported and have not been independently verified here. These figures describe box localization only; the project does not claim individual-turtle identification.
 
 Run the reproducible test suite with:
 
